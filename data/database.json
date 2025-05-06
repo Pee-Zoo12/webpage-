@@ -1,0 +1,35 @@
+{
+    "products": [
+        {
+            "productID": "NOX001",
+            "productName": "Signature Hoodie",
+            "serialNumber": "NOX-2024-001",
+            "authenticityCode": "AUTH-2024-001",
+            "stockQuantity": 100,
+            "type": "hoodie",
+            "unitCost": 89.99,
+            "description": "Premium quality hoodie with signature Nox design",
+            "images": [
+                "assets/images/products/hoodie-1.jpg",
+                "assets/images/products/hoodie-2.jpg",
+                "assets/images/products/hoodie-3.jpg"
+            ],
+            "sizes": ["S", "M", "L", "XL"],
+            "colors": ["Black", "Olive", "Grey"],
+            "featured": true,
+            "newArrival": true
+        }
+    ],
+    "users": [],
+    "orders": [],
+    "cart": [],
+    "reviews": [],
+    "company": {
+        "name": "Nox Apparel",
+        "CEO": "John Doe",
+        "brandIdentity": "Dark, Premium, Urban",
+        "missionStatement": "Elevating urban fashion through dark aesthetics and premium quality",
+        "branches": [],
+        "resellers": []
+    }
+} 

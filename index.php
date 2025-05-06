@@ -1,7 +1,11 @@
 <?php
-require_once '<includes/config.php';
-require_once '<includes/functions.php';
-require_once '<includes/JsonDatabase.php';
+session_start();
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
+
+require_once 'includes/config.php';
+require_once 'includes/functions.php';
+require_once 'includes/JsonDatabase.php';
 require_once 'Product.php';
 
 // Initialize site

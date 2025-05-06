@@ -1,0 +1,14 @@
+{
+    "name": "nox-apparel/webapp",
+    "description": "Nox Apparel Web Application",
+    "type": "project",
+    "require": {
+        "php": ">=7.4",
+        "endroid/qr-code": "^4.8"
+    },
+    "autoload": {
+        "psr-4": {
+            "App\\": "src/"
+        }
+    }
+} 

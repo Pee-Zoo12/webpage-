@@ -4,17 +4,29 @@
  */
 
 /**
- * Clean and sanitize input data
+ * Sanitize user input
  */
-function sanitize($data) {
-    $data = trim($data);
-    $data = stripslashes($data);
-    $data = htmlspecialchars($data);
-    return $data;
+function sanitize($input) {
+    if (is_array($input)) {
+        return array_map('sanitize', $input);
+    }
+    return htmlspecialchars(trim($input), ENT_QUOTES, 'UTF-8');
 }
 
 /**
- * Format price with currency symbol
+ * Generate a random string
+ */
+function generateRandomString($length = 10) {
+    $characters = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    $randomString = '';
+    for ($i = 0; $i < $length; $i++) {
+        $randomString .= $characters[rand(0, strlen($characters) - 1)];
+    }
+    return $randomString;
+}
+
+/**
+ * Format price
  */
 function formatPrice($price) {
     return '$' . number_format($price, 2);
@@ -40,31 +52,30 @@ function buildUrl($newParams = []) {
  * Check if user is logged in
  */
 function isLoggedIn() {
-    return isset($_SESSION['userID']);
+    return isset($_SESSION['user_id']);
 }
 
 /**
- * Get current user data
+ * Get current user
  */
 function getCurrentUser() {
-    if (!isLoggedIn()) {
-        return null;
+    if (isLoggedIn()) {
+        $db = new JsonDatabase();
+        return $db->getUser($_SESSION['user_id']);
     }
-    
-    $db = new JsonDatabase();
-    return $db->getUserById($_SESSION['userID']);
+    return null;
 }
 
 /**
- * Redirect to a page
+ * Redirect to a URL
  */
 function redirect($url) {
     header("Location: $url");
-    exit;
+    exit();
 }
 
 /**
- * Flash messages for success/errors
+ * Display flash message
  */
 function setFlashMessage($type, $message) {
     $_SESSION['flash'] = [
@@ -73,6 +84,9 @@ function setFlashMessage($type, $message) {
     ];
 }
 
+/**
+ * Get and clear flash message
+ */
 function getFlashMessage() {
     if (isset($_SESSION['flash'])) {
         $flash = $_SESSION['flash'];
@@ -83,75 +97,142 @@ function getFlashMessage() {
 }
 
 /**
- * Generate a unique token (for CSRF protection)
+ * Validate email
  */
-function generateToken() {
-    if (!isset($_SESSION['token'])) {
-        $_SESSION['token'] = bin2hex(random_bytes(32));
-    }
-    return $_SESSION['token'];
+function isValidEmail($email) {
+    return filter_var($email, FILTER_VALIDATE_EMAIL);
 }
 
 /**
- * Verify token
+ * Generate pagination links
  */
-function verifyToken($token) {
-    if (!isset($_SESSION['token']) || $token !== $_SESSION['token']) {
-        return false;
-    }
-    return true;
-}
-
-/**
- * Truncate text to a certain length
- */
-function truncateText($text, $length = 100) {
-    if (strlen($text) <= $length) {
-        return $text;
+function generatePagination($currentPage, $totalPages, $url) {
+    $links = '';
+    
+    if ($totalPages > 1) {
+        $links .= '<div class="pagination">';
+        
+        // Previous button
+        if ($currentPage > 1) {
+            $links .= '<a href="' . $url . '?page=' . ($currentPage - 1) . '" class="page-link">&laquo; Previous</a>';
+        }
+        
+        // Page numbers
+        for ($i = 1; $i <= $totalPages; $i++) {
+            if ($i == $currentPage) {
+                $links .= '<span class="page-link active">' . $i . '</span>';
+            } else {
+                $links .= '<a href="' . $url . '?page=' . $i . '" class="page-link">' . $i . '</a>';
+            }
+        }
+        
+        // Next button
+        if ($currentPage < $totalPages) {
+            $links .= '<a href="' . $url . '?page=' . ($currentPage + 1) . '" class="page-link">Next &raquo;</a>';
+        }
+        
+        $links .= '</div>';
     }
     
-    $text = substr($text, 0, $length);
-    $text = substr($text, 0, strrpos($text, ' '));
-    return $text . '...';
-}
-
-/**
- * Get cart item count
- */
-function getCartItemCount() {
-    if (!isset($_SESSION['cart'])) {
-        return 0;
-    }
-    
-    $count = 0;
-    foreach ($_SESSION['cart'] as $item) {
-        $count += $item['quantity'];
-    }
-    
-    return $count;
+    return $links;
 }
 
 /**
  * Generate breadcrumbs
  */
 function generateBreadcrumbs($items) {
-    $html = '<nav class="breadcrumb">';
-    $i = 0;
+    $breadcrumbs = '<div class="breadcrumbs">';
+    $lastItem = end($items);
     
     foreach ($items as $label => $url) {
-        if ($i > 0) {
-            $html .= ' &gt; ';
-        }
-        
-        if ($url) {
-            $html .= '<a href="' . $url . '">' . $label . '</a>';
+        if ($url === $lastItem) {
+            $breadcrumbs .= '<span class="current">' . $label . '</span>';
         } else {
-            $html .= '<span>' . $label . '</span>';
+            $breadcrumbs .= '<a href="' . $url . '">' . $label . '</a> &raquo; ';
         }
-        
-        $i++;
     }
     
-    $html .= '</nav>';
-    return $html;
+    $breadcrumbs .= '</div>';
+    return $breadcrumbs;
+}
+
+/**
+ * Format date
+ */
+function formatDate($date, $format = 'F j, Y') {
+    return date($format, strtotime($date));
+}
+
+/**
+ * Truncate text
+ */
+function truncateText($text, $length = 100) {
+    if (strlen($text) <= $length) {
+        return $text;
+    }
+    return substr($text, 0, $length) . '...';
+}
+
+/**
+ * Check if request is AJAX
+ */
+function isAjaxRequest() {
+    return !empty($_SERVER['HTTP_X_REQUESTED_WITH']) && 
+           strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) == 'xmlhttprequest';
+}
+
+/**
+ * Send JSON response
+ */
+function sendJsonResponse($data, $status = 200) {
+    header('Content-Type: application/json');
+    http_response_code($status);
+    echo json_encode($data);
+    exit();
+}
+
+/**
+ * Validate file upload
+ */
+function validateFileUpload($file, $allowedTypes, $maxSize) {
+    $errors = [];
+    
+    if ($file['error'] !== UPLOAD_ERR_OK) {
+        $errors[] = 'File upload failed';
+        return $errors;
+    }
+    
+    if (!in_array($file['type'], $allowedTypes)) {
+        $errors[] = 'Invalid file type';
+    }
+    
+    if ($file['size'] > $maxSize) {
+        $errors[] = 'File size exceeds limit';
+    }
+    
+    return $errors;
+}
+
+/**
+ * Generate QR code data
+ */
+function generateQRCodeData($productId, $serialNumber) {
+    return json_encode([
+        'product_id' => $productId,
+        'serial_number' => $serialNumber,
+        'timestamp' => time()
+    ]);
+}
+
+/**
+ * Verify QR code data
+ */
+function verifyQRCodeData($data) {
+    $decoded = json_decode($data, true);
+    if (!$decoded) {
+        return false;
+    }
+    
+    // Add your verification logic here
+    return true;
 }

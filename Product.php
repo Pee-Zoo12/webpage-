@@ -1,339 +1,294 @@
 <?php
 require_once 'includes/config.php';
+require_once 'includes/JsonDatabase.php';
 require_once 'includes/functions.php';
-require_once 'classes/JsonDatabase.php';
-require_once 'classes/Website.php';
-require_once 'classes/Product.php';
-require_once 'classes/QRCode.php';
-require_once 'classes/Reviews.php';
+require_once 'includes/Website.php';
+require_once 'includes/Product.php';
+require_once 'includes/Reviews.php';
 
-// Initialize site
-$site = new Website();
+// Initialize database and classes
 $db = new JsonDatabase();
+$website = new Website($db);
+$productHandler = new Product($db);
+$reviews = new Reviews($db);
 
-// Get product ID
-$productID = isset($_GET['id']) ? (int)$_GET['id'] : 0;
+// Get product ID from URL
+$productId = isset($_GET['id']) ? sanitizeInput($_GET['id']) : null;
 
-// Get product data
-$product = $db->getProductById($productID);
+if (!$productId) {
+    header('Location: shop.php');
+    exit;
+}
 
-// If product not found, redirect to shop
+// Get product details
+$product = $productHandler->getProduct($productId);
+
 if (!$product) {
     header('Location: shop.php');
     exit;
 }
 
-// Generate QR code
-$qrCode = new QRCode();
-$qrCode->serialNumber = $product->serialNumber;
-$qrCode->authenticityCode = $product->authenticityCode;
+// Get product reviews
+$productReviews = $reviews->getProductReviews($productId);
+$averageRating = $reviews->getAverageRating($productId);
+$ratingDistribution = $reviews->getRatingDistribution($productId);
 
 // Get related products
-$relatedProducts = $db->getRelatedProducts($product, 4);
+$relatedProducts = $productHandler->getRelatedProducts($productId);
 
-// Get product reviews
-$reviews = $db->getProductReviews($productID);
-$reviewCount = count($reviews);
-$averageRating = $reviewCount > 0 ? array_sum(array_column($reviews, 'rating')) / $reviewCount : 0;
+// Set page title
+$pageTitle = $product['name'] . " - " . SITE_NAME;
 
-// Page title
-$pageTitle = $product->productName . " | Nox Apparel";
 include 'includes/header.php';
 ?>
 
-<main>
-    <!-- Product Details -->
-    <section class="product-details">
-        <div class="container">
-            <div class="product-grid">
-                <!-- Product Images -->
-                <div class="product-images animate-slide-right">
-                    <div class="main-image">
-                        <img id="main-product-image" src="<?php echo $product->image; ?>" alt="<?php echo $product->productName; ?>">
-                    </div>
-                    <?php if (!empty($product->gallery)): ?>
-                    <div class="thumbnail-images">
-                        <div class="thumbnail active" data-image="<?php echo $product->image; ?>">
-                            <img src="<?php echo $product->image; ?>" alt="<?php echo $product->productName; ?>">
-                        </div>
-                        <?php foreach ($product->gallery as $image): ?>
-                        <div class="thumbnail" data-image="<?php echo $image; ?>">
-                            <img src="<?php echo $image; ?>" alt="<?php echo $product->productName; ?>">
-                        </div>
-                        <?php endforeach; ?>
-                    </div>
-                    <?php endif; ?>
-                </div>
+<div class="product-header">
+    <div class="container">
+        <h1><?php echo $product['name']; ?></h1>
+        <?php echo generateBreadcrumbs(['Home' => 'index.php', 'Shop' => 'shop.php', $product['name'] => '']); ?>
+    </div>
+</div>
 
-                <!-- Product Info -->
-                <div class="product-info animate-slide-left">
-                    <nav class="breadcrumb">
-                        <a href="index.php">Home</a> &gt;
-                        <a href="shop.php">Shop</a> &gt;
-                        <a href="shop.php?category=<?php echo urlencode($product->type); ?>"><?php echo $product->type; ?></a> &gt;
-                        <span><?php echo $product->productName; ?></span>
-                    </nav>
-
-                    <h1><?php echo $product->productName; ?></h1>
-                    
-                    <div class="product-meta">
-                        <div class="product-price">$<?php echo number_format($product->unitCost, 2); ?></div>
-                        
-                        <?php if ($reviewCount > 0): ?>
-                        <div class="product-rating">
-                            <div class="stars">
-                                <?php for ($i = 1; $i <= 5; $i++): ?>
-                                    <?php if ($i <= round($averageRating)): ?>
-                                        <i class="fas fa-star"></i>
-                                    <?php else: ?>
-                                        <i class="far fa-star"></i>
-                                    <?php endif; ?>
-                                <?php endfor; ?>
-                            </div>
-                            <span>(<?php echo $reviewCount; ?> reviews)</span>
-                        </div>
-                        <?php endif; ?>
-                    </div>
-
-                    <div class="product-description">
-                        <?php echo $product->description; ?>
-                    </div>
-
-                    <?php if (!empty($product->features)): ?>
-                    <div class="product-features">
-                        <h3>Features</h3>
-                        <ul>
-                            <?php foreach ($product->features as $feature): ?>
-                            <li><?php echo $feature; ?></li>
-                            <?php endforeach; ?>
-                        </ul>
-                    </div>
-                    <?php endif; ?>
-
-                    <?php if (!empty($product->sizes)): ?>
-                    <div class="product-variant">
-                        <h3>Size</h3>
-                        <div class="size-options">
-                            <?php foreach ($product->sizes as $size): ?>
-                            <label class="size-option">
-                                <input type="radio" name="size" value="<?php echo $size; ?>" <?php echo $size === $product->sizes[0] ? 'checked' : ''; ?>>
-                                <span><?php echo $size; ?></span>
-                            </label>
-                            <?php endforeach; ?>
-                        </div>
-                    </div>
-                    <?php endif; ?>
-
-                    <?php if (!empty($product->colors)): ?>
-                    <div class="product-variant">
-                        <h3>Color</h3>
-                        <div class="color-options">
-                            <?php foreach ($product->colors as $color => $code): ?>
-                            <label class="color-option" title="<?php echo ucfirst($color); ?>">
-                                <input type="radio" name="color" value="<?php echo $color; ?>" <?php echo $color === array_key_first($product->colors) ? 'checked' : ''; ?>>
-                                <span style="background-color: <?php echo $code; ?>"></span>
-                            </label>
-                            <?php endforeach; ?>
-                        </div>
-                    </div>
-                    <?php endif; ?>
-
-                    <div class="product-actions">
-                        <div class="quantity-selector">
-                            <button class="quantity-btn minus">-</button>
-                            <input type="number" id="product-quantity" value="1" min="1" max="<?php echo $product->stockQuantity; ?>">
-                            <button class="quantity-btn plus">+</button>
-                        </div>
-
-                        <button id="add-to-cart" class="btn btn-primary" data-product-id="<?php echo $product->productID; ?>">
-                            Add to Cart
-                        </button>
-                    </div>
-
-                    <div class="stock-info <?php echo $product->stockQuantity > 0 ? 'in-stock' : 'out-of-stock'; ?>">
-                        <?php if ($product->stockQuantity > 0): ?>
-                            <i class="fas fa-check-circle"></i> In Stock
-                        <?php else: ?>
-                            <i class="fas fa-times-circle"></i> Out of Stock
-                        <?php endif; ?>
-                    </div>
-
-                    <div class="product-authenticity">
-                        <h3>Authenticity Guaranteed</h3>
-                        <p>Each Nox Apparel product comes with a unique QR code for authenticity verification.</p>
-                        <div class="qr-preview">
-                            <img src="assets/images/qr-sample.svg" alt="QR Code Sample">
-                        </div>
-                        <a href="authenticity.php" class="btn btn-text">Learn More</a>
-                    </div>
+<div class="product-grid">
+    <div class="product-gallery">
+        <div class="main-image">
+            <img src="<?php echo $product['image']; ?>" alt="<?php echo $product['name']; ?>">
+        </div>
+        <div class="thumbnails">
+            <?php foreach ($product['gallery'] as $image): ?>
+            <div class="thumbnail">
+                <img src="<?php echo $image; ?>" alt="<?php echo $product['name']; ?>">
+            </div>
+            <?php endforeach; ?>
+        </div>
+    </div>
+    
+    <div class="product-info">
+        <div class="product-price">
+            <span class="price">$<?php echo number_format($product['price'], 2); ?></span>
+            <?php if (isset($product['oldPrice'])): ?>
+            <span class="old-price">$<?php echo number_format($product['oldPrice'], 2); ?></span>
+            <?php endif; ?>
+        </div>
+        
+        <div class="product-rating">
+            <div class="stars">
+                <?php for ($i = 1; $i <= 5; $i++): ?>
+                <i class="fas fa-star <?php echo $i <= $averageRating ? 'active' : ''; ?>"></i>
+                <?php endfor; ?>
+            </div>
+            <span class="rating-count">(<?php echo count($productReviews); ?> reviews)</span>
+        </div>
+        
+        <div class="product-serial">
+            <span>Serial Number: <?php echo $product['serialNumber']; ?></span>
+        </div>
+        
+        <div class="product-description">
+            <?php echo $product['description']; ?>
+        </div>
+        
+        <form class="product-form" method="POST" action="process/cart.php">
+            <input type="hidden" name="product_id" value="<?php echo $product['id']; ?>">
+            
+            <?php if (isset($product['sizes'])): ?>
+            <div class="form-group">
+                <label for="size">Size</label>
+                <select name="size" id="size" required>
+                    <option value="">Select Size</option>
+                    <?php foreach ($product['sizes'] as $size): ?>
+                    <option value="<?php echo $size; ?>"><?php echo $size; ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <?php endif; ?>
+            
+            <?php if (isset($product['colors'])): ?>
+            <div class="form-group">
+                <label for="color">Color</label>
+                <select name="color" id="color" required>
+                    <option value="">Select Color</option>
+                    <?php foreach ($product['colors'] as $color): ?>
+                    <option value="<?php echo $color; ?>"><?php echo $color; ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <?php endif; ?>
+            
+            <div class="form-group">
+                <label for="quantity">Quantity</label>
+                <div class="quantity-selector">
+                    <button type="button" class="quantity-btn minus">-</button>
+                    <input type="number" name="quantity" id="quantity" value="1" min="1" max="10" required>
+                    <button type="button" class="quantity-btn plus">+</button>
                 </div>
             </div>
+            
+            <button type="submit" name="add_to_cart" class="btn btn-primary">Add to Cart</button>
+        </form>
+    </div>
+</div>
+
+<div class="product-details">
+    <div class="tabs">
+        <button class="tab-btn active" data-tab="specifications">Specifications</button>
+        <button class="tab-btn" data-tab="authenticity">Authenticity</button>
+        <button class="tab-btn" data-tab="reviews">Reviews</button>
+    </div>
+    
+    <div class="tab-content">
+        <div class="tab-pane active" id="specifications">
+            <h3>Product Specifications</h3>
+            <ul class="specs-list">
+                <?php foreach ($product['specifications'] as $spec): ?>
+                <li>
+                    <span class="spec-name"><?php echo $spec['name']; ?></span>
+                    <span class="spec-value"><?php echo $spec['value']; ?></span>
+                </li>
+                <?php endforeach; ?>
+            </ul>
         </div>
-    </section>
-
-    <!-- Product Tabs -->
-    <section class="product-tabs">
-        <div class="container">
-            <div class="tabs">
-                <div class="tab-buttons">
-                    <button class="tab-btn active" data-tab="details">Details</button>
-                    <button class="tab-btn" data-tab="specifications">Specifications</button>
-                    <button class="tab-btn" data-tab="reviews">Reviews (<?php echo $reviewCount; ?>)</button>
+        
+        <div class="tab-pane" id="authenticity">
+            <h3>Product Authenticity</h3>
+            <div class="authenticity-info">
+                <p>Each Nox Apparel product comes with a unique QR code that allows you to verify its authenticity.</p>
+                <div class="qr-code">
+                    <img src="<?php echo $product['qrCode']; ?>" alt="Product QR Code">
                 </div>
-
-                <!-- Details Tab -->
-                <div class="tab-content active" id="details-tab">
-                    <div class="tab-grid">
-                        <div class="tab-text animate-on-scroll">
-                            <h3>Product Details</h3>
-                            <?php echo $product->detailedDescription; ?>
-                        </div>
-                        <div class="tab-image animate-on-scroll">
-                            <img src="<?php echo !empty($product->detailImage) ? $product->detailImage : $product->image; ?>" alt="<?php echo $product->productName; ?> Details">
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Specifications Tab -->
-                <div class="tab-content" id="specifications-tab">
-                    <div class="specifications animate-on-scroll">
-                        <h3>Technical Specifications</h3>
-                        <table class="specs-table">
-                            <?php foreach ($product->specifications as $spec => $value): ?>
-                            <tr>
-                                <th><?php echo $spec; ?></th>
-                                <td><?php echo $value; ?></td>
-                            </tr>
-                            <?php endforeach; ?>
-                        </table>
-                    </div>
-                </div>
-
-                <!-- Reviews Tab -->
-                <div class="tab-content" id="reviews-tab">
-                    <div class="reviews-section animate-on-scroll">
-                        <div class="reviews-summary">
-                            <div class="average-rating">
-                                <div class="rating-number"><?php echo number_format($averageRating, 1); ?></div>
-                                <div class="rating-stars">
-                                    <?php for ($i = 1; $i <= 5; $i++): ?>
-                                        <?php if ($i <= round($averageRating)): ?>
-                                            <i class="fas fa-star"></i>
-                                        <?php else: ?>
-                                            <i class="far fa-star"></i>
-                                        <?php endif; ?>
-                                    <?php endfor; ?>
-                                </div>
-                                <div class="rating-count"><?php echo $reviewCount; ?> Reviews</div>
-                            </div>
-                        </div>
-
-                        <div class="write-review">
-                            <button id="write-review-btn" class="btn btn-secondary">Write a Review</button>
-                        </div>
-
-                        <div id="review-form-container" class="review-form-container hidden">
-                            <form id="review-form" action="process/submit-review.php" method="post">
-                                <input type="hidden" name="productID" value="<?php echo $product->productID; ?>">
-                                
-                                <div class="form-group">
-                                    <label for="rating">Rating</label>
-                                    <div class="rating-input">
-                                        <?php for ($i = 5; $i >= 1; $i--): ?>
-                                        <input type="radio" id="star<?php echo $i; ?>" name="rating" value="<?php echo $i; ?>">
-                                        <label for="star<?php echo $i; ?>"><i class="far fa-star"></i></label>
-                                        <?php endfor; ?>
-                                    </div>
-                                </div>
-
-                                <div class="form-group">
-                                    <label for="name">Name</label>
-                                    <input type="text" id="name" name="name" required>
-                                </div>
-
-                                <div class="form-group">
-                                    <label for="email">Email</label>
-                                    <input type="email" id="email" name="email" required>
-                                </div>
-
-                                <div class="form-group">
-                                    <label for="reviewContent">Review</label>
-                                    <textarea id="reviewContent" name="reviewContent" rows="5" required></textarea>
-                                </div>
-
-                                <div class="form-actions">
-                                    <button type="submit" class="btn btn-primary">Submit Review</button>
-                                    <button type="button" id="cancel-review" class="btn btn-text">Cancel</button>
-                                </div>
-                            </form>
-                        </div>
-
-                        <?php if ($reviewCount > 0): ?>
-                        <div class="reviews-list">
-                            <?php foreach ($reviews as $review): ?>
-                            <div class="review-item">
-                                <div class="review-header">
-                                    <div class="reviewer-name"><?php echo $review->customerName; ?></div>
-                                    <div class="review-date"><?php echo date('F j, Y', strtotime($review->date)); ?></div>
-                                </div>
-                                <div class="review-rating">
-                                    <?php for ($i = 1; $i <= 5; $i++): ?>
-                                        <?php if ($i <= $review->rating): ?>
-                                            <i class="fas fa-star"></i>
-                                        <?php else: ?>
-                                            <i class="far fa-star"></i>
-                                        <?php endif; ?>
-                                    <?php endfor; ?>
-                                </div>
-                                <div class="review-content">
-                                    <?php echo $review->reviewContent; ?>
-                                </div>
-                                <?php if (!empty($review->images)): ?>
-                                <div class="review-images">
-                                    <?php foreach ($review->images as $image): ?>
-                                    <img src="<?php echo $image; ?>" alt="Review Image">
-                                    <?php endforeach; ?>
-                                </div>
-                                <?php endif; ?>
-                            </div>
-                            <?php endforeach; ?>
-                        </div>
-                        <?php else: ?>
-                        <div class="no-reviews">
-                            <p>There are no reviews yet. Be the first to review this product!</p>
-                        </div>
-                        <?php endif; ?>
-                    </div>
-                </div>
+                <a href="verify.php" class="btn btn-outline">Verify Product</a>
             </div>
         </div>
-    </section>
-
-    <!-- Related Products -->
-    <?php if (!empty($relatedProducts)): ?>
-    <section class="related-products">
-        <div class="container">
-            <h2 class="section-title">You May Also Like</h2>
-            <div class="products-slider">
-                <?php foreach ($relatedProducts as $relatedProduct): ?>
-                <div class="product-slide animate-on-scroll">
-                    <div class="product-image">
-                        <img src="<?php echo $relatedProduct->image; ?>" alt="<?php echo $relatedProduct->productName; ?>">
-                        <div class="product-overlay">
-                            <a href="product.php?id=<?php echo $relatedProduct->productID; ?>" class="btn-view">View</a>
-                            <button class="btn-cart" data-product-id="<?php echo $relatedProduct->productID; ?>">Add to Cart</button>
+        
+        <div class="tab-pane" id="reviews">
+            <h3>Customer Reviews</h3>
+            <div class="reviews-summary">
+                <div class="average-rating">
+                    <div class="rating-number"><?php echo $averageRating; ?></div>
+                    <div class="stars">
+                        <?php for ($i = 1; $i <= 5; $i++): ?>
+                        <i class="fas fa-star <?php echo $i <= $averageRating ? 'active' : ''; ?>"></i>
+                        <?php endfor; ?>
+                    </div>
+                    <div class="rating-count"><?php echo count($productReviews); ?> reviews</div>
+                </div>
+                
+                <div class="rating-bars">
+                    <?php for ($i = 5; $i >= 1; $i--): ?>
+                    <div class="rating-bar">
+                        <span class="stars"><?php echo $i; ?> <i class="fas fa-star"></i></span>
+                        <div class="bar">
+                            <div class="fill" style="width: <?php echo ($ratingDistribution[$i] / count($productReviews)) * 100; ?>%"></div>
+                        </div>
+                        <span class="count"><?php echo $ratingDistribution[$i]; ?></span>
+                    </div>
+                    <?php endfor; ?>
+                </div>
+            </div>
+            
+            <div class="reviews-list">
+                <?php foreach ($productReviews as $review): ?>
+                <div class="review-item">
+                    <div class="review-header">
+                        <div class="reviewer-info">
+                            <span class="reviewer-name"><?php echo $review['userName']; ?></span>
+                            <span class="review-date"><?php echo formatDate($review['date']); ?></span>
+                        </div>
+                        <div class="review-rating">
+                            <?php for ($i = 1; $i <= 5; $i++): ?>
+                            <i class="fas fa-star <?php echo $i <= $review['rating'] ? 'active' : ''; ?>"></i>
+                            <?php endfor; ?>
                         </div>
                     </div>
-                    <div class="product-info">
-                        <h3><?php echo $relatedProduct->productName; ?></h3>
-                        <p class="product-price">$<?php echo number_format($relatedProduct->unitCost, 2); ?></p>
+                    <div class="review-content">
+                        <?php echo $review['comment']; ?>
                     </div>
                 </div>
                 <?php endforeach; ?>
             </div>
         </div>
-    </section>
-    <?php endif; ?>
-</main>
+    </div>
+</div>
+
+<?php if (!empty($relatedProducts)): ?>
+<div class="related-products">
+    <div class="container">
+        <h2>Related Products</h2>
+        <div class="products-grid">
+            <?php foreach ($relatedProducts as $related): ?>
+            <div class="product-card">
+                <div class="product-image">
+                    <img src="<?php echo $related['image']; ?>" alt="<?php echo $related['name']; ?>">
+                    <div class="product-overlay">
+                        <a href="product.php?id=<?php echo $related['id']; ?>" class="btn btn-outline">View Details</a>
+                    </div>
+                </div>
+                <div class="product-info">
+                    <h3><?php echo $related['name']; ?></h3>
+                    <div class="product-price">$<?php echo number_format($related['price'], 2); ?></div>
+                </div>
+            </div>
+            <?php endforeach; ?>
+        </div>
+    </div>
+</div>
+<?php endif; ?>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Tab switching
+    const tabBtns = document.querySelectorAll('.tab-btn');
+    const tabPanes = document.querySelectorAll('.tab-pane');
+    
+    tabBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+            const tabId = btn.dataset.tab;
+            
+            // Update active tab button
+            tabBtns.forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            
+            // Update active tab pane
+            tabPanes.forEach(pane => {
+                pane.classList.remove('active');
+                if (pane.id === tabId) {
+                    pane.classList.add('active');
+                }
+            });
+        });
+    });
+    
+    // Quantity selector
+    const quantityInput = document.getElementById('quantity');
+    const minusBtn = document.querySelector('.quantity-btn.minus');
+    const plusBtn = document.querySelector('.quantity-btn.plus');
+    
+    minusBtn.addEventListener('click', () => {
+        const currentValue = parseInt(quantityInput.value);
+        if (currentValue > 1) {
+            quantityInput.value = currentValue - 1;
+        }
+    });
+    
+    plusBtn.addEventListener('click', () => {
+        const currentValue = parseInt(quantityInput.value);
+        if (currentValue < 10) {
+            quantityInput.value = currentValue + 1;
+        }
+    });
+    
+    // Gallery image switching
+    const mainImage = document.querySelector('.main-image img');
+    const thumbnails = document.querySelectorAll('.thumbnail img');
+    
+    thumbnails.forEach(thumb => {
+        thumb.addEventListener('click', () => {
+            mainImage.src = thumb.src;
+            thumbnails.forEach(t => t.parentElement.classList.remove('active'));
+            thumb.parentElement.classList.add('active');
+        });
+    });
+});
+</script>
 
 <?php include 'includes/footer.php'; ?>
